@@ -10,15 +10,19 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Plus, Trash2 } from 'lucide-react'
+import { Plus, Trash2, Edit2 } from 'lucide-react'
 import { getUsers, deleteUser } from '@/services/users'
 import { User } from '@/types'
 import { UserModal } from '@/components/UserModal'
+import { useAuth } from '@/hooks/use-auth'
 import { toast } from '@/hooks/use-toast'
+import { useRealtime } from '@/hooks/use-realtime'
 
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([])
   const [modalOpen, setModalOpen] = useState(false)
+  const [editingUser, setEditingUser] = useState<User | null>(null)
+  const { user: currentUser } = useAuth()
 
   const loadData = async () => {
     try {
@@ -32,8 +36,17 @@ export default function UsersPage() {
   useEffect(() => {
     loadData()
   }, [])
+  useRealtime('users', () => loadData())
 
   const handleDelete = async (id: string) => {
+    if (id === currentUser?.id) {
+      toast({
+        title: 'Operação não permitida',
+        description: 'Você não pode remover seu próprio usuário.',
+        variant: 'destructive',
+      })
+      return
+    }
     if (!confirm('Deseja realmente remover este usuário?')) return
     try {
       await deleteUser(id)
@@ -56,11 +69,13 @@ export default function UsersPage() {
           </p>
         </div>
         <Button
-          onClick={() => setModalOpen(true)}
+          onClick={() => {
+            setEditingUser(null)
+            setModalOpen(true)
+          }}
           className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2"
         >
-          <Plus className="h-4 w-4" />
-          Novo Usuário
+          <Plus className="h-4 w-4" /> Novo Usuário
         </Button>
       </div>
 
@@ -72,14 +87,14 @@ export default function UsersPage() {
                 <TableHead>Nome</TableHead>
                 <TableHead>E-mail</TableHead>
                 <TableHead>Papel</TableHead>
-                <TableHead>Data de Criação</TableHead>
+                <TableHead>Criado em</TableHead>
                 <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {users.map((u) => {
-                const dateStr = new Date(u.created).toLocaleDateString('pt-BR')
                 const isAdmin = u.role === 'admin'
+                const isSelf = u.id === currentUser?.id
                 return (
                   <TableRow key={u.id} className="hover:bg-slate-50">
                     <TableCell className="font-semibold text-slate-800">{u.name || '-'}</TableCell>
@@ -96,16 +111,33 @@ export default function UsersPage() {
                         {isAdmin ? 'Administrador' : 'Analista'}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-xs text-slate-500">{dateStr}</TableCell>
+                    <TableCell className="text-xs text-slate-500">
+                      {new Date(u.created).toLocaleDateString('pt-BR')}
+                    </TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDelete(u.id)}
-                        className="text-red-500 hover:text-red-700"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => {
+                            setEditingUser(u)
+                            setModalOpen(true)
+                          }}
+                          className="text-slate-500 hover:text-slate-700"
+                          disabled={isSelf}
+                        >
+                          <Edit2 className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDelete(u.id)}
+                          className="text-red-500 hover:text-red-700"
+                          disabled={isSelf}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 )
@@ -115,7 +147,13 @@ export default function UsersPage() {
         </CardContent>
       </Card>
 
-      <UserModal open={modalOpen} onOpenChange={setModalOpen} onSuccess={loadData} />
+      <UserModal
+        key={editingUser?.id || 'new'}
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+        user={editingUser}
+        onSuccess={loadData}
+      />
     </div>
   )
 }

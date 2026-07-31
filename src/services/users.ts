@@ -19,7 +19,10 @@ export const createUser = async (data: {
   })
 }
 
-export const updateUser = async (id: string, data: Partial<User>) => {
+export const updateUser = async (
+  id: string,
+  data: Partial<User> & { password?: string; passwordConfirm?: string },
+) => {
   return pb.collection('users').update<User>(id, data)
 }
 

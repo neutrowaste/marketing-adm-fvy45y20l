@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -22,6 +22,7 @@ import { Agenda } from '@/types'
 import { createAgenda, updateAgenda } from '@/services/agendas'
 import { useAuth } from '@/hooks/use-auth'
 import { toast } from '@/hooks/use-toast'
+import { extractFieldErrors, type FieldErrors } from '@/lib/pocketbase/errors'
 
 interface AgendaModalProps {
   open: boolean
@@ -43,19 +44,31 @@ const WEEKDAYS = [
 export function AgendaModal({ open, onOpenChange, agenda, onSuccess }: AgendaModalProps) {
   const { user } = useAuth()
   const [loading, setLoading] = useState(false)
+  const [title, setTitle] = useState('')
+  const [theme, setTheme] = useState('')
+  const [baseModel, setBaseModel] = useState('')
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
+  const [frequency, setFrequency] = useState<Agenda['frequency']>('daily')
+  const [customDays, setCustomDays] = useState<number[]>([1, 3, 5])
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
 
-  const [title, setTitle] = useState(agenda?.title || '')
-  const [theme, setTheme] = useState(agenda?.theme || '')
-  const [baseModel, setBaseModel] = useState(agenda?.base_model || '')
-  const [startDate, setStartDate] = useState(
-    agenda?.start_date ? agenda.start_date.split('T')[0] : '',
-  )
-  const [endDate, setEndDate] = useState(agenda?.end_date ? agenda.end_date.split('T')[0] : '')
-  const [frequency, setFrequency] = useState<Agenda['frequency']>(agenda?.frequency || 'daily')
-  const [customDays, setCustomDays] = useState<number[]>(agenda?.custom_days || [1, 3, 5])
+  useEffect(() => {
+    if (open) {
+      setTitle(agenda?.title || '')
+      setTheme(agenda?.theme || '')
+      setBaseModel(agenda?.base_model || '')
+      setStartDate(agenda?.start_date ? agenda.start_date.split('T')[0] : '')
+      setEndDate(agenda?.end_date ? agenda.end_date.split('T')[0] : '')
+      setFrequency(agenda?.frequency || 'daily')
+      setCustomDays(agenda?.custom_days || [1, 3, 5])
+      setFieldErrors({})
+    }
+  }, [open, agenda])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setFieldErrors({})
     if (!title || !theme || !baseModel || !startDate || !endDate) {
       toast({
         title: 'Erro de validação',
@@ -64,7 +77,6 @@ export function AgendaModal({ open, onOpenChange, agenda, onSuccess }: AgendaMod
       })
       return
     }
-
     try {
       setLoading(true)
       const payload = {
@@ -77,7 +89,6 @@ export function AgendaModal({ open, onOpenChange, agenda, onSuccess }: AgendaMod
         custom_days: frequency === 'custom' ? customDays : [],
         created_by: user?.id,
       }
-
       if (agenda?.id) {
         await updateAgenda(agenda.id, payload)
         toast({ title: 'Agenda atualizada', description: 'A agenda foi alterada com sucesso.' })
@@ -88,15 +99,17 @@ export function AgendaModal({ open, onOpenChange, agenda, onSuccess }: AgendaMod
           description: 'A agenda e seus posts rascunho foram gerados.',
         })
       }
-
       onSuccess()
       onOpenChange(false)
     } catch (err: any) {
-      toast({
-        title: 'Erro ao salvar',
-        description: err.message || 'Ocorreu um erro ao salvar a agenda.',
-        variant: 'destructive',
-      })
+      const errors = extractFieldErrors(err)
+      if (Object.keys(errors).length > 0) setFieldErrors(errors)
+      else
+        toast({
+          title: 'Erro ao salvar',
+          description: err.message || 'Ocorreu um erro.',
+          variant: 'destructive',
+        })
     } finally {
       setLoading(false)
     }
@@ -114,7 +127,6 @@ export function AgendaModal({ open, onOpenChange, agenda, onSuccess }: AgendaMod
         <DialogHeader>
           <DialogTitle>{agenda ? 'Editar Agenda' : 'Nova Agenda de Posts'}</DialogTitle>
         </DialogHeader>
-
         <form onSubmit={handleSubmit} className="space-y-4 pt-2">
           <div>
             <Label htmlFor="title">Título da Agenda *</Label>
@@ -125,32 +137,34 @@ export function AgendaModal({ open, onOpenChange, agenda, onSuccess }: AgendaMod
               onChange={(e) => setTitle(e.target.value)}
               required
             />
+            {fieldErrors.title && <p className="text-sm text-red-500 mt-1">{fieldErrors.title}</p>}
           </div>
-
           <div>
             <Label htmlFor="theme">Tema do Conteúdo *</Label>
             <Textarea
               id="theme"
-              placeholder="Descreva o tema principal (ex: Promoção de ofertas exclusivas e dicas de presente)"
+              placeholder="Descreva o tema principal"
               value={theme}
               onChange={(e) => setTheme(e.target.value)}
               required
               rows={2}
             />
+            {fieldErrors.theme && <p className="text-sm text-red-500 mt-1">{fieldErrors.theme}</p>}
           </div>
-
           <div>
             <Label htmlFor="baseModel">Modelo Base (Estrutura do Post) *</Label>
             <Textarea
               id="baseModel"
-              placeholder="Ex: 🎁 Surpreenda quem você ama!\n\n[CONTEÚDO]\n\n#DiaDasMaes #Ofertas"
+              placeholder="Ex: 🎁 Surpreenda quem você ama! [CONTEÚDO]"
               value={baseModel}
               onChange={(e) => setBaseModel(e.target.value)}
               required
               rows={3}
             />
+            {fieldErrors.base_model && (
+              <p className="text-sm text-red-500 mt-1">{fieldErrors.base_model}</p>
+            )}
           </div>
-
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label htmlFor="startDate">Data Inicial *</Label>
@@ -161,6 +175,9 @@ export function AgendaModal({ open, onOpenChange, agenda, onSuccess }: AgendaMod
                 onChange={(e) => setStartDate(e.target.value)}
                 required
               />
+              {fieldErrors.start_date && (
+                <p className="text-sm text-red-500 mt-1">{fieldErrors.start_date}</p>
+              )}
             </div>
             <div>
               <Label htmlFor="endDate">Data Final *</Label>
@@ -171,9 +188,11 @@ export function AgendaModal({ open, onOpenChange, agenda, onSuccess }: AgendaMod
                 onChange={(e) => setEndDate(e.target.value)}
                 required
               />
+              {fieldErrors.end_date && (
+                <p className="text-sm text-red-500 mt-1">{fieldErrors.end_date}</p>
+              )}
             </div>
           </div>
-
           <div>
             <Label htmlFor="frequency">Frequência de Publicação</Label>
             <Select value={frequency} onValueChange={(val: any) => setFrequency(val)}>
@@ -188,7 +207,6 @@ export function AgendaModal({ open, onOpenChange, agenda, onSuccess }: AgendaMod
               </SelectContent>
             </Select>
           </div>
-
           {frequency === 'custom' && (
             <div className="space-y-2 rounded-lg border p-3 bg-slate-50">
               <Label className="text-xs font-semibold text-slate-700">Dias da Semana</Label>
@@ -208,7 +226,6 @@ export function AgendaModal({ open, onOpenChange, agenda, onSuccess }: AgendaMod
               </div>
             </div>
           )}
-
           <DialogFooter className="pt-4">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancelar

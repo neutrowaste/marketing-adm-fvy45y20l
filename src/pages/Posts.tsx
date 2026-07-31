@@ -12,10 +12,20 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Input } from '@/components/ui/input'
 import { Sparkles, Send, Eye, Image as ImageIcon, Calendar } from 'lucide-react'
 import { getPosts, generatePostContent, updatePostStatus } from '@/services/posts'
-import { Post } from '@/types'
+import { getAgendas } from '@/services/agendas'
+import { Post, Agenda } from '@/types'
 import { PostDetailModal } from '@/components/PostDetailModal'
+import { useAuth } from '@/hooks/use-auth'
 import { toast } from '@/hooks/use-toast'
 import { useRealtime } from '@/hooks/use-realtime'
 
@@ -28,16 +38,35 @@ const statusMap: Record<string, { label: string; badge: string }> = {
 
 export default function PostsPage() {
   const { agendaId } = useParams<{ agendaId?: string }>()
+  const { user, isAdmin } = useAuth()
   const [posts, setPosts] = useState<Post[]>([])
+  const [agendas, setAgendas] = useState<Agenda[]>([])
   const [statusFilter, setStatusFilter] = useState('all')
+  const [agendaFilter, setAgendaFilter] = useState(agendaId || 'all')
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
   const [selectedPost, setSelectedPost] = useState<Post | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
   const [generatingId, setGeneratingId] = useState<string | null>(null)
 
+  useEffect(() => {
+    if (agendaId) setAgendaFilter(agendaId)
+    else setAgendaFilter('all')
+  }, [agendaId])
+
   const loadData = async () => {
     try {
-      const data = await getPosts(agendaId, statusFilter)
-      setPosts(data)
+      const [postsData, agendasData] = await Promise.all([
+        getPosts(
+          agendaFilter !== 'all' ? agendaFilter : undefined,
+          statusFilter,
+          startDate || undefined,
+          endDate || undefined,
+        ),
+        getAgendas(isAdmin ? '' : `created_by = "${user?.id}"`),
+      ])
+      setPosts(postsData)
+      setAgendas(agendasData)
     } catch (e) {
       console.error(e)
     }
@@ -45,11 +74,8 @@ export default function PostsPage() {
 
   useEffect(() => {
     loadData()
-  }, [agendaId, statusFilter])
-
-  useRealtime('posts', () => {
-    loadData()
-  })
+  }, [agendaFilter, statusFilter, startDate, endDate, user?.id, isAdmin])
+  useRealtime('posts', () => loadData())
 
   const handleGenerate = async (postId: string) => {
     try {
@@ -68,10 +94,7 @@ export default function PostsPage() {
   const handleSimulatePost = async (postId: string) => {
     try {
       await updatePostStatus(postId, 'posted')
-      toast({
-        title: 'Publicação Simulada',
-        description: 'O post foi marcado como publicado com sucesso no Instagram.',
-      })
+      toast({ title: 'Publicação Simulada', description: 'Post marcado como publicado.' })
       loadData()
     } catch (err: any) {
       toast({ title: 'Erro na simulação', description: err.message, variant: 'destructive' })
@@ -80,15 +103,39 @@ export default function PostsPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-            Gerenciamento de Posts
-          </h1>
-          <p className="text-sm text-slate-500">
-            Gere conteúdo com IA e simule a publicação no Instagram.
-          </p>
-        </div>
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Gerenciamento de Posts</h1>
+        <p className="text-sm text-slate-500">
+          Gere conteúdo com IA e simule a publicação no Instagram.
+        </p>
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-3">
+        <Select value={agendaFilter} onValueChange={setAgendaFilter}>
+          <SelectTrigger className="w-full sm:w-48">
+            <SelectValue placeholder="Agenda" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todas as Agendas</SelectItem>
+            {agendas.map((a) => (
+              <SelectItem key={a.id} value={a.id}>
+                {a.title}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Input
+          type="date"
+          value={startDate}
+          onChange={(e) => setStartDate(e.target.value)}
+          className="w-full sm:w-40"
+        />
+        <Input
+          type="date"
+          value={endDate}
+          onChange={(e) => setEndDate(e.target.value)}
+          className="w-full sm:w-40"
+        />
       </div>
 
       <Tabs value={statusFilter} onValueChange={setStatusFilter} className="w-full">
@@ -137,7 +184,6 @@ export default function PostsPage() {
                         year: 'numeric',
                       })
                     : 'N/A'
-
                   return (
                     <TableRow key={post.id} className="hover:bg-slate-50">
                       <TableCell className="text-xs font-medium text-slate-700 whitespace-nowrap">
@@ -160,9 +206,7 @@ export default function PostsPage() {
                         </div>
                       </TableCell>
                       <TableCell className="max-w-md text-xs text-slate-600 line-clamp-2">
-                        {post.content ? (
-                          post.content
-                        ) : (
+                        {post.content || (
                           <span className="italic text-slate-400">
                             Conteúdo pendente de geração
                           </span>
@@ -186,21 +230,18 @@ export default function PostsPage() {
                               className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs gap-1 py-1 h-8"
                             >
                               <Sparkles className="h-3 w-3" />
-                              {generatingId === post.id ? 'Gerando...' : 'Gerar Conteúdo'}
+                              {generatingId === post.id ? 'Gerando...' : 'Gerar'}
                             </Button>
                           )}
-
                           {post.status === 'generated' && (
                             <Button
                               size="sm"
                               onClick={() => handleSimulatePost(post.id)}
                               className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1 py-1 h-8"
                             >
-                              <Send className="h-3 w-3" />
-                              Simular Publicação
+                              <Send className="h-3 w-3" /> Publicar
                             </Button>
                           )}
-
                           <Button
                             variant="ghost"
                             size="sm"

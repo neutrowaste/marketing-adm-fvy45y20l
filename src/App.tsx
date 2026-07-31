@@ -1,15 +1,17 @@
-/* Main App Component - Handles routing (using react-router-dom), query client and other providers - use this file to add all routes */
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { Toaster } from '@/components/ui/toaster'
 import { Toaster as Sonner } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { AuthProvider } from '@/hooks/use-auth'
+import { ProtectedRoute } from '@/components/ProtectedRoute'
+import Layout from '@/components/Layout'
 import Index from './pages/Index'
+import Login from './pages/Login'
+import Agendas from './pages/Agendas'
+import Posts from './pages/Posts'
+import Logs from './pages/Logs'
+import Users from './pages/Users'
 import NotFound from './pages/NotFound'
-import Layout from './components/Layout'
-
-// ONLY IMPORT AND RENDER WORKING PAGES, NEVER ADD PLACEHOLDER COMPONENTS OR PAGES IN THIS FILE
-// AVOID REMOVING ANY CONTEXT PROVIDERS FROM THIS FILE (e.g. TooltipProvider, Toaster, Sonner)
 
 const App = () => (
   <BrowserRouter>
@@ -18,9 +20,20 @@ const App = () => (
         <Toaster />
         <Sonner />
         <Routes>
-          <Route element={<Layout />}>
-            <Route path="/" element={<Index />} />
-            {/* ADD ALL CUSTOM ROUTES MUST BE ADDED HERE */}
+          <Route path="/login" element={<Login />} />
+          <Route element={<ProtectedRoute />}>
+            <Route element={<Layout />}>
+              <Route path="/" element={<Index />} />
+              <Route path="/agendas" element={<Agendas />} />
+              <Route path="/agendas/:agendaId/posts" element={<Posts />} />
+              <Route path="/posts" element={<Posts />} />
+              <Route path="/logs" element={<Logs />} />
+            </Route>
+          </Route>
+          <Route element={<ProtectedRoute adminOnly />}>
+            <Route element={<Layout />}>
+              <Route path="/usuarios" element={<Users />} />
+            </Route>
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>

@@ -1,19 +1,11 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Card, CardContent } from '@/components/ui/card'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import { Plus, Search, Eye, Edit2, Trash2 } from 'lucide-react'
+import { Plus, Search } from 'lucide-react'
 import { getAgendas, deleteAgenda } from '@/services/agendas'
+import { getPosts } from '@/services/posts'
 import { Agenda } from '@/types'
+import { AgendaCard } from '@/components/AgendaCard'
 import { AgendaModal } from '@/components/AgendaModal'
 import { useAuth } from '@/hooks/use-auth'
 import { toast } from '@/hooks/use-toast'
@@ -21,16 +13,23 @@ import { useRealtime } from '@/hooks/use-realtime'
 
 export default function AgendasPage() {
   const [agendas, setAgendas] = useState<Agenda[]>([])
+  const [postCounts, setPostCounts] = useState<Record<string, number>>({})
   const [search, setSearch] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editingAgenda, setEditingAgenda] = useState<Agenda | null>(null)
-  const { isAdmin } = useAuth()
-  const navigate = useNavigate()
+  const { user, isAdmin } = useAuth()
 
   const loadData = async () => {
     try {
-      const data = await getAgendas()
+      const filter = isAdmin ? '' : `created_by = "${user?.id}"`
+      const data = await getAgendas(filter)
       setAgendas(data)
+      const posts = await getPosts()
+      const counts: Record<string, number> = {}
+      posts.forEach((p) => {
+        counts[p.agenda] = (counts[p.agenda] || 0) + 1
+      })
+      setPostCounts(counts)
     } catch (e) {
       console.error(e)
     }
@@ -38,11 +37,10 @@ export default function AgendasPage() {
 
   useEffect(() => {
     loadData()
-  }, [])
+  }, [user?.id, isAdmin])
 
-  useRealtime('agendas', () => {
-    loadData()
-  })
+  useRealtime('agendas', () => loadData())
+  useRealtime('posts', () => loadData())
 
   const handleDelete = async (id: string) => {
     if (
@@ -82,8 +80,7 @@ export default function AgendasPage() {
           }}
           className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2"
         >
-          <Plus className="h-4 w-4" />
-          Nova Agenda
+          <Plus className="h-4 w-4" /> Nova Agenda
         </Button>
       </div>
 
@@ -97,92 +94,28 @@ export default function AgendasPage() {
         />
       </div>
 
-      <Card className="border border-slate-200 bg-white shadow-subtle overflow-hidden">
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader className="bg-slate-50">
-              <TableRow>
-                <TableHead>Título</TableHead>
-                <TableHead>Tema</TableHead>
-                <TableHead>Período</TableHead>
-                <TableHead>Frequência</TableHead>
-                <TableHead className="text-right">Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8 text-slate-400 text-sm">
-                    Nenhuma agenda encontrada.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filtered.map((agenda) => {
-                  const sDate = new Date(agenda.start_date).toLocaleDateString('pt-BR')
-                  const eDate = new Date(agenda.end_date).toLocaleDateString('pt-BR')
-                  return (
-                    <TableRow key={agenda.id} className="hover:bg-slate-50">
-                      <TableCell className="font-semibold text-slate-800">{agenda.title}</TableCell>
-                      <TableCell className="max-w-xs text-xs text-slate-600 line-clamp-2">
-                        {agenda.theme}
-                      </TableCell>
-                      <TableCell className="text-xs text-slate-600">
-                        {sDate} - {eDate}
-                      </TableCell>
-                      <TableCell className="text-xs">
-                        <span className="capitalize bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full border border-slate-200 font-medium">
-                          {agenda.frequency === 'daily'
-                            ? 'Diário'
-                            : agenda.frequency === 'every_two_days'
-                              ? 'A cada 2 dias'
-                              : agenda.frequency === 'weekly'
-                                ? 'Semanal'
-                                : 'Personalizado'}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => navigate(`/agendas/${agenda.id}/posts`)}
-                            className="text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 text-xs gap-1"
-                          >
-                            <Eye className="h-3.5 w-3.5" /> Posts
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => {
-                              setEditingAgenda(agenda)
-                              setModalOpen(true)
-                            }}
-                            className="text-slate-500 hover:text-slate-700"
-                          >
-                            <Edit2 className="h-3.5 w-3.5" />
-                          </Button>
-                          {isAdmin && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleDelete(agenda.id)}
-                              className="text-red-500 hover:text-red-700"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  )
-                })
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      {filtered.length === 0 ? (
+        <div className="text-center py-12 text-slate-400 text-sm">Nenhuma agenda encontrada.</div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filtered.map((agenda) => (
+            <AgendaCard
+              key={agenda.id}
+              agenda={agenda}
+              postCount={postCounts[agenda.id] || 0}
+              onEdit={(a) => {
+                setEditingAgenda(a)
+                setModalOpen(true)
+              }}
+              onDelete={handleDelete}
+              canDelete={isAdmin}
+            />
+          ))}
+        </div>
+      )}
 
       <AgendaModal
+        key={editingAgenda?.id || 'new'}
         open={modalOpen}
         onOpenChange={setModalOpen}
         agenda={editingAgenda}

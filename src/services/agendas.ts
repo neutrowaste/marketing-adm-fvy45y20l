@@ -1,10 +1,11 @@
 import pb from '@/lib/pocketbase/client'
 import { Agenda } from '@/types'
 
-export const getAgendas = async () => {
+export const getAgendas = async (filter?: string) => {
   return pb.collection('agendas').getFullList<Agenda>({
     sort: '-created',
     expand: 'created_by',
+    filter: filter || '',
   })
 }
 

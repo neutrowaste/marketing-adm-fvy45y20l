@@ -1,10 +1,17 @@
 import pb from '@/lib/pocketbase/client'
 import { Post } from '@/types'
 
-export const getPosts = async (agendaId?: string, status?: string) => {
+export const getPosts = async (
+  agendaId?: string,
+  status?: string,
+  startDate?: string,
+  endDate?: string,
+) => {
   const filters: string[] = []
   if (agendaId) filters.push(`agenda = "${agendaId}"`)
   if (status && status !== 'all') filters.push(`status = "${status}"`)
+  if (startDate) filters.push(`scheduled_date >= "${new Date(startDate).toISOString()}"`)
+  if (endDate) filters.push(`scheduled_date <= "${new Date(endDate).toISOString()}"`)
 
   const filter = filters.length ? filters.join(' && ') : ''
 
