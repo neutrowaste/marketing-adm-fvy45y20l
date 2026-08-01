@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-01T12:44:14.225Z",
+  "generatedAt": "2026-08-01T16:00:42.911Z",
   "collections": [
     {
       "name": "users",
@@ -29,21 +29,29 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         },
         {
           "name": "role",
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": ["admin", "analyst"]
+          "selectValues": [
+            "admin",
+            "analyst"
+          ]
         }
       ],
       "indexes": [
@@ -97,7 +105,12 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["daily", "every_two_days", "weekly", "custom"]
+          "selectValues": [
+            "daily",
+            "every_two_days",
+            "weekly",
+            "custom"
+          ]
         },
         {
           "name": "custom_days",
@@ -117,14 +130,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         }
       ],
       "indexes": []
@@ -170,7 +188,12 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["draft", "generated", "posted", "failed"]
+          "selectValues": [
+            "draft",
+            "generated",
+            "posted",
+            "failed"
+          ]
         },
         {
           "name": "created_by",
@@ -184,14 +207,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         }
       ],
       "indexes": [
@@ -249,14 +277,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         }
       ],
       "indexes": [
