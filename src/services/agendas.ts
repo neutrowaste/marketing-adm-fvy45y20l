@@ -15,11 +15,11 @@ export const getAgenda = async (id: string) => {
   })
 }
 
-export const createAgenda = async (data: Partial<Agenda>) => {
+export const createAgenda = async (data: Record<string, unknown> | FormData) => {
   return pb.collection('agendas').create<Agenda>(data)
 }
 
-export const updateAgenda = async (id: string, data: Partial<Agenda>) => {
+export const updateAgenda = async (id: string, data: Record<string, unknown> | FormData) => {
   return pb.collection('agendas').update<Agenda>(id, data)
 }
 

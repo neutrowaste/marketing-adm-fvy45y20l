@@ -23,6 +23,7 @@ import { createAgenda, updateAgenda } from '@/services/agendas'
 import { useAuth } from '@/hooks/use-auth'
 import { toast } from '@/hooks/use-toast'
 import { extractFieldErrors, type FieldErrors } from '@/lib/pocketbase/errors'
+import pb from '@/lib/pocketbase/client'
 
 interface AgendaModalProps {
   open: boolean
@@ -41,6 +42,9 @@ const WEEKDAYS = [
   { label: 'Sáb', val: 6 },
 ]
 
+const VALID_TYPES = ['image/png', 'image/jpeg', 'image/webp']
+const MAX_SIZE = 25 * 1024 * 1024
+
 export function AgendaModal({ open, onOpenChange, agenda, onSuccess }: AgendaModalProps) {
   const { user } = useAuth()
   const [loading, setLoading] = useState(false)
@@ -51,6 +55,10 @@ export function AgendaModal({ open, onOpenChange, agenda, onSuccess }: AgendaMod
   const [endDate, setEndDate] = useState('')
   const [frequency, setFrequency] = useState<Agenda['frequency']>('daily')
   const [customDays, setCustomDays] = useState<number[]>([1, 3, 5])
+  const [instructions, setInstructions] = useState('')
+  const [baseImageFile, setBaseImageFile] = useState<File | null>(null)
+  const [baseImageError, setBaseImageError] = useState('')
+  const [existingImageUrl, setExistingImageUrl] = useState('')
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
 
   useEffect(() => {
@@ -62,9 +70,49 @@ export function AgendaModal({ open, onOpenChange, agenda, onSuccess }: AgendaMod
       setEndDate(agenda?.end_date ? agenda.end_date.split('T')[0] : '')
       setFrequency(agenda?.frequency || 'daily')
       setCustomDays(agenda?.custom_days || [1, 3, 5])
+      setInstructions(agenda?.instructions || '')
+      setBaseImageFile(null)
+      setBaseImageError('')
+      setExistingImageUrl('')
       setFieldErrors({})
+
+      if (agenda?.base_image && agenda.id) {
+        const url = `${import.meta.env.VITE_POCKETBASE_URL}/api/files/agendas/${agenda.id}/${agenda.base_image}`
+        fetch(url, { headers: { Authorization: pb.authStore.token } })
+          .then((res) => res.blob())
+          .then((blob) => setExistingImageUrl(URL.createObjectURL(blob)))
+          .catch(() => {})
+      }
     }
   }, [open, agenda])
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) {
+      setBaseImageFile(null)
+      return
+    }
+    if (!VALID_TYPES.includes(file.type)) {
+      setBaseImageError('Formato não suportado. Use PNG, JPG ou WEBP.')
+      setBaseImageFile(null)
+      e.target.value = ''
+      return
+    }
+    if (file.size > MAX_SIZE) {
+      setBaseImageError('Arquivo muito grande. Tamanho máximo: 25MB.')
+      setBaseImageFile(null)
+      e.target.value = ''
+      return
+    }
+    setBaseImageError('')
+    setBaseImageFile(file)
+  }
+
+  const toggleDay = (dayVal: number) => {
+    setCustomDays((prev) =>
+      prev.includes(dayVal) ? prev.filter((d) => d !== dayVal) : [...prev, dayVal],
+    )
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -79,21 +127,24 @@ export function AgendaModal({ open, onOpenChange, agenda, onSuccess }: AgendaMod
     }
     try {
       setLoading(true)
-      const payload = {
-        title,
-        theme,
-        base_model: baseModel,
-        start_date: new Date(startDate).toISOString(),
-        end_date: new Date(endDate).toISOString(),
-        frequency,
-        custom_days: frequency === 'custom' ? customDays : [],
-        created_by: user?.id,
+      const formData = new FormData()
+      formData.append('title', title)
+      formData.append('theme', theme)
+      formData.append('base_model', baseModel)
+      formData.append('start_date', new Date(startDate).toISOString())
+      formData.append('end_date', new Date(endDate).toISOString())
+      formData.append('frequency', frequency)
+      formData.append('custom_days', JSON.stringify(frequency === 'custom' ? customDays : []))
+      formData.append('created_by', user?.id || '')
+      formData.append('instructions', instructions)
+      if (baseImageFile) {
+        formData.append('base_image', baseImageFile)
       }
       if (agenda?.id) {
-        await updateAgenda(agenda.id, payload)
+        await updateAgenda(agenda.id, formData)
         toast({ title: 'Agenda atualizada', description: 'A agenda foi alterada com sucesso.' })
       } else {
-        await createAgenda(payload)
+        await createAgenda(formData)
         toast({
           title: 'Agenda criada',
           description: 'A agenda e seus posts rascunho foram gerados.',
@@ -115,11 +166,7 @@ export function AgendaModal({ open, onOpenChange, agenda, onSuccess }: AgendaMod
     }
   }
 
-  const toggleDay = (dayVal: number) => {
-    setCustomDays((prev) =>
-      prev.includes(dayVal) ? prev.filter((d) => d !== dayVal) : [...prev, dayVal],
-    )
-  }
+  const previewUrl = baseImageFile ? URL.createObjectURL(baseImageFile) : existingImageUrl
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -163,6 +210,42 @@ export function AgendaModal({ open, onOpenChange, agenda, onSuccess }: AgendaMod
             />
             {fieldErrors.base_model && (
               <p className="text-sm text-red-500 mt-1">{fieldErrors.base_model}</p>
+            )}
+          </div>
+          <div>
+            <Label htmlFor="baseImage">Imagem Base / Modelo</Label>
+            <Input
+              id="baseImage"
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              onChange={handleFileChange}
+              className="cursor-pointer text-xs"
+            />
+            <p className="text-xs text-slate-400 mt-1">PNG, JPG ou WEBP — máx. 25MB (opcional)</p>
+            {baseImageError && <p className="text-sm text-red-500 mt-1">{baseImageError}</p>}
+            {fieldErrors.base_image && (
+              <p className="text-sm text-red-500 mt-1">{fieldErrors.base_image}</p>
+            )}
+            {previewUrl && (
+              <div className="mt-2 w-20 h-20 rounded-lg border border-slate-200 overflow-hidden bg-slate-50">
+                <img src={previewUrl} alt="Preview" className="w-full h-full object-cover" />
+              </div>
+            )}
+          </div>
+          <div>
+            <Label htmlFor="instructions">Instruções de Tratamento de Imagem</Label>
+            <Textarea
+              id="instructions"
+              placeholder="Ex: Aplique filtro quente, mantenha a logo no canto inferior direito"
+              value={instructions}
+              onChange={(e) => setInstructions(e.target.value)}
+              rows={3}
+            />
+            <p className="text-xs text-slate-400 mt-1">
+              Usado pelo webhook de tratamento de imagem durante a geração (opcional)
+            </p>
+            {fieldErrors.instructions && (
+              <p className="text-sm text-red-500 mt-1">{fieldErrors.instructions}</p>
             )}
           </div>
           <div className="grid grid-cols-2 gap-4">

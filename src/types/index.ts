@@ -17,6 +17,8 @@ export interface Agenda {
   end_date: string
   frequency: 'daily' | 'every_two_days' | 'weekly' | 'custom'
   custom_days?: number[]
+  base_image?: string
+  instructions?: string
   created_by: string
   expand?: {
     created_by?: User
