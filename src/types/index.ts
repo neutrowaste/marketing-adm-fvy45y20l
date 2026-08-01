@@ -33,6 +33,7 @@ export interface Post {
   scheduled_date: string
   content: string
   image_url: string
+  generated_image?: string
   status: 'draft' | 'generated' | 'posted' | 'failed'
   created_by: string
   expand?: {

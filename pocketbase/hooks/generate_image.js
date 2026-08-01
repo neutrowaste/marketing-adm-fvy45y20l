@@ -34,7 +34,7 @@ routerAdd(
     if (!baseImage || !instructions) {
       return e.json(400, {
         error:
-          'A agenda precisa ter uma imagem base e instruções definidas antes de gerar a imagem. Adicione uma imagem base e instruções à agenda.',
+          'A agenda precisa ter uma imagem base e instruções definidas antes de gerar a imagem.',
       })
     }
 
@@ -45,47 +45,45 @@ routerAdd(
       var storageKey = agenda.baseFilesPath() + '/' + baseImage
       fileContent = fsys.get(storageKey)
       fsys.close()
-    } catch (fsErr) {
-      // fallback below
-    }
+    } catch (fsErr) {}
 
     if (!fileContent) {
-      var pbUrl = $secrets.get('PB_INSTANCE_URL') || ''
-      var fileUrl = pbUrl + '/api/files/agendas/' + agenda.id + '/' + baseImage
+      var pbUrl0 = $secrets.get('PB_INSTANCE_URL') || ''
+      var dlUrl = pbUrl0 + '/api/files/agendas/' + agenda.id + '/' + baseImage
       try {
-        var fileRes = $http.send({ url: fileUrl, method: 'GET', timeout: 30 })
-        if (fileRes.statusCode >= 200 && fileRes.statusCode < 300) {
-          fileContent = fileRes.body
+        var dlRes = $http.send({ url: dlUrl, method: 'GET', timeout: 30 })
+        if (dlRes.statusCode >= 200 && dlRes.statusCode < 300) {
+          fileContent = dlRes.body
         }
-      } catch (fetchErr) {
-        // handled below
-      }
+      } catch (fetchErr) {}
     }
 
     if (!fileContent) {
-      return e.json(400, {
-        error: 'Não foi possível ler a imagem base da agenda.',
-      })
+      return e.json(400, { error: 'Não foi possível ler a imagem base da agenda.' })
     }
 
-    var base64Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-    var isString = typeof fileContent === 'string'
-    var parts = []
-    var contentLen = fileContent.length
-    for (var i = 0; i < contentLen; i += 3) {
-      var byte1 = isString ? fileContent.charCodeAt(i) : fileContent[i]
-      var byte2 =
-        i + 1 < contentLen ? (isString ? fileContent.charCodeAt(i + 1) : fileContent[i + 1]) : 0
-      var byte3 =
-        i + 2 < contentLen ? (isString ? fileContent.charCodeAt(i + 2) : fileContent[i + 2]) : 0
-      parts.push(base64Chars.charAt(byte1 >> 2))
-      parts.push(base64Chars.charAt(((byte1 & 0x03) << 4) | (byte2 >> 4)))
-      parts.push(
-        i + 1 < contentLen ? base64Chars.charAt(((byte2 & 0x0f) << 2) | (byte3 >> 6)) : '=',
-      )
-      parts.push(i + 2 < contentLen ? base64Chars.charAt(byte3 & 0x3f) : '=')
+    var lowerName = baseImage.toLowerCase()
+    var mimeType = 'image/png'
+    if (lowerName.indexOf('.jpg') >= 0 || lowerName.indexOf('.jpeg') >= 0) {
+      mimeType = 'image/jpeg'
+    } else if (lowerName.indexOf('.webp') >= 0) {
+      mimeType = 'image/webp'
     }
-    var imageBase64 = parts.join('')
+
+    var b64chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+    var isStr = typeof fileContent === 'string'
+    var encParts = []
+    var clen = fileContent.length
+    for (var i = 0; i < clen; i += 3) {
+      var b1 = isStr ? fileContent.charCodeAt(i) : fileContent[i]
+      var b2 = i + 1 < clen ? (isStr ? fileContent.charCodeAt(i + 1) : fileContent[i + 1]) : 0
+      var b3 = i + 2 < clen ? (isStr ? fileContent.charCodeAt(i + 2) : fileContent[i + 2]) : 0
+      encParts.push(b64chars.charAt(b1 >> 2))
+      encParts.push(b64chars.charAt(((b1 & 0x03) << 4) | (b2 >> 4)))
+      encParts.push(i + 1 < clen ? b64chars.charAt(((b2 & 0x0f) << 2) | (b3 >> 6)) : '=')
+      encParts.push(i + 2 < clen ? b64chars.charAt(b3 & 0x3f) : '=')
+    }
+    var imageBase64 = encParts.join('')
 
     var webhookRes
     try {
@@ -96,6 +94,7 @@ routerAdd(
         body: JSON.stringify({
           context: instructions,
           imageBase64: imageBase64,
+          mimeType: mimeType,
         }),
         timeout: 120,
       })
@@ -119,12 +118,32 @@ routerAdd(
       })
     }
 
-    var base64Data = data.imagemTratadaBase64
-    if (base64Data.indexOf('base64,') >= 0) {
-      base64Data = base64Data.split('base64,')[1]
+    var treatedB64 = data.imagemTratadaBase64
+    if (treatedB64.indexOf('base64,') >= 0) {
+      treatedB64 = treatedB64.split('base64,')[1]
     }
-    var imageUrl = 'data:image/png;base64,' + base64Data
+    treatedB64 = treatedB64.replace(/[^A-Za-z0-9+/]/g, '')
 
+    var decBytes = []
+    for (var k = 0; k < treatedB64.length; k += 4) {
+      var d1 = b64chars.indexOf(treatedB64.charAt(k))
+      var d2 = b64chars.indexOf(treatedB64.charAt(k + 1))
+      var d3 = b64chars.indexOf(treatedB64.charAt(k + 2))
+      var d4 = b64chars.indexOf(treatedB64.charAt(k + 3))
+      if (d1 < 0) d1 = 0
+      if (d2 < 0) d2 = 0
+      decBytes.push((d1 << 2) | (d2 >> 4))
+      if (d3 >= 0) decBytes.push(((d2 & 0x0f) << 4) | (d3 >> 2))
+      if (d4 >= 0) decBytes.push(((d3 & 0x03) << 6) | d4)
+    }
+
+    var generatedFile = $filesystem.fileFromBytes(decBytes, 'generated.png')
+    post.set('generated_image', generatedFile)
+    $app.save(post)
+
+    var storedFilename = post.getString('generated_image')
+    var pbUrl = $secrets.get('PB_INSTANCE_URL') || ''
+    var imageUrl = pbUrl + '/api/files/posts/' + post.id + '/' + storedFilename
     post.set('image_url', imageUrl)
     $app.save(post)
 
