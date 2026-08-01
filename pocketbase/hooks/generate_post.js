@@ -13,14 +13,18 @@ routerAdd(
       return e.unauthorizedError('Autenticação necessária')
     }
 
-    const post = $app.findRecordById('posts', postId)
-    if (!post) {
+    var post
+    try {
+      post = $app.findRecordById('posts', postId)
+    } catch (_) {
       return e.notFoundError('Post não encontrado')
     }
 
-    const agendaId = post.getString('agenda')
-    const agenda = $app.findRecordById('agendas', agendaId)
-    if (!agenda) {
+    var agendaId = post.getString('agenda')
+    var agenda
+    try {
+      agenda = $app.findRecordById('agendas', agendaId)
+    } catch (_) {
       return e.notFoundError('Agenda não encontrada')
     }
 
@@ -61,63 +65,92 @@ routerAdd(
     var instructions = (agenda.getString('instructions') || '').trim()
 
     var imageUrl = ''
-    var logDetails =
-      'Conteúdo e imagem gerados com sucesso para o post agendado em ' + scheduledDate
+    var logDetails = 'Conteúdo gerado com sucesso para o post agendado em ' + scheduledDate
 
     if (baseImage && instructions) {
-      var webhookSuccess = false
-      var failureReason = ''
+      var fileContent = null
 
       try {
+        var fsys = $app.newFilesystem()
+        var storageKey = agenda.baseFilesPath() + '/' + baseImage
+        fileContent = fsys.get(storageKey)
+        fsys.close()
+      } catch (fsErr) {
+        // fallback below
+      }
+
+      if (!fileContent) {
         var pbUrl = $secrets.get('PB_INSTANCE_URL') || ''
-        var publicImageUrl = pbUrl + '/api/files/agendas/' + agenda.id + '/' + baseImage
+        var fileUrl = pbUrl + '/api/files/agendas/' + agenda.id + '/' + baseImage
+        try {
+          var fileRes = $http.send({ url: fileUrl, method: 'GET', timeout: 30 })
+          if (fileRes.statusCode >= 200 && fileRes.statusCode < 300) {
+            fileContent = fileRes.body
+          }
+        } catch (fetchErr) {
+          // handled below
+        }
+      }
 
-        var webhookRes = $http.send({
-          url: 'https://devtasks.fksato.cloud/webhook/tratar-imagem',
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            context: instructions,
-            imageUrl: publicImageUrl,
-            callbackUrl: '',
-          }),
-          timeout: 120,
-        })
+      if (fileContent) {
+        var base64Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+        var isString = typeof fileContent === 'string'
+        var parts = []
+        var contentLen = fileContent.length
+        for (var i = 0; i < contentLen; i += 3) {
+          var byte1 = isString ? fileContent.charCodeAt(i) : fileContent[i]
+          var byte2 =
+            i + 1 < contentLen ? (isString ? fileContent.charCodeAt(i + 1) : fileContent[i + 1]) : 0
+          var byte3 =
+            i + 2 < contentLen ? (isString ? fileContent.charCodeAt(i + 2) : fileContent[i + 2]) : 0
+          parts.push(base64Chars.charAt(byte1 >> 2))
+          parts.push(base64Chars.charAt(((byte1 & 0x03) << 4) | (byte2 >> 4)))
+          parts.push(
+            i + 1 < contentLen ? base64Chars.charAt(((byte2 & 0x0f) << 2) | (byte3 >> 6)) : '=',
+          )
+          parts.push(i + 2 < contentLen ? base64Chars.charAt(byte3 & 0x3f) : '=')
+        }
+        var imageBase64 = parts.join('')
 
-        if (webhookRes.statusCode >= 200 && webhookRes.statusCode < 300) {
-          var data = webhookRes.json
-          if (data && data.status === 'ok' && data.imagemTratadaBase64) {
-            var base64Data = data.imagemTratadaBase64
-            if (base64Data.indexOf('base64,') >= 0) {
-              base64Data = base64Data.split('base64,')[1]
-            }
-            imageUrl = 'data:image/png;base64,' + base64Data
-            webhookSuccess = true
-            if (data.promptUsado) {
-              logDetails =
-                logDetails + ' | Prompt usado (tratamento de imagem): ' + data.promptUsado
+        try {
+          var webhookRes = $http.send({
+            url: 'https://devtasks.fksato.cloud/webhook-test/tratar-imagem',
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              context: instructions,
+              imageBase64: imageBase64,
+            }),
+            timeout: 120,
+          })
+
+          if (webhookRes.statusCode >= 200 && webhookRes.statusCode < 300) {
+            var data = webhookRes.json
+            if (data && data.status === 'ok' && data.imagemTratadaBase64) {
+              var base64Data = data.imagemTratadaBase64
+              if (base64Data.indexOf('base64,') >= 0) {
+                base64Data = base64Data.split('base64,')[1]
+              }
+              imageUrl = 'data:image/png;base64,' + base64Data
+              logDetails = logDetails + ' | Imagem tratada gerada via webhook'
+              if (data.promptUsado) {
+                logDetails = logDetails + ' | Prompt usado: ' + data.promptUsado
+              }
+            } else {
+              logDetails = logDetails + ' | Falha: resposta do webhook sem imagem válida'
             }
           } else {
-            failureReason = 'Resposta sem imagemTratadaBase64 ou status diferente de ok'
+            logDetails = logDetails + ' | Falha: webhook retornou HTTP ' + webhookRes.statusCode
           }
-        } else {
-          failureReason = 'Webhook retornou status HTTP ' + webhookRes.statusCode
+        } catch (err) {
+          logDetails =
+            logDetails + ' | Falha no tratamento de imagem: ' + String(err.message || err)
         }
-      } catch (err) {
-        failureReason = 'Erro de rede/timeout: ' + String(err.message || err)
-      }
-
-      if (!webhookSuccess) {
-        imageUrl =
-          'https://img.usecurling.com/p/800/800?q=' + encodeURIComponent(theme.slice(0, 30))
-        logDetails =
-          logDetails +
-          ' | Falha no tratamento de imagem: ' +
-          failureReason +
-          '. Usando imagem por tema.'
+      } else {
+        logDetails = logDetails + ' | Imagem não gerada: não foi possível ler a imagem base'
       }
     } else {
-      imageUrl = 'https://img.usecurling.com/p/800/800?q=' + encodeURIComponent(theme.slice(0, 30))
+      logDetails = logDetails + ' | Imagem não gerada: agenda sem imagem base ou instruções'
     }
 
     post.set('content', generatedText)

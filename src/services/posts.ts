@@ -43,6 +43,25 @@ export const generatePostContent = async (postId: string) => {
   })
 }
 
+export const generatePostImage = async (postId: string) => {
+  try {
+    return await pb.send<{ success: boolean; image_url: string; promptUsado: string }>(
+      '/backend/v1/generate-image',
+      {
+        method: 'POST',
+        body: JSON.stringify({ postId }),
+        headers: { 'Content-Type': 'application/json' },
+      },
+    )
+  } catch (err: any) {
+    if (err?.status === 0 || err?.isAbort) {
+      throw new Error('Erro de conexão. Verifique sua internet e tente novamente.')
+    }
+    const msg = err?.response?.error || err?.message || 'Erro desconhecido ao gerar imagem'
+    throw new Error(msg)
+  }
+}
+
 export const deletePost = async (id: string) => {
   return pb.collection('posts').delete(id)
 }

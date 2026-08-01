@@ -20,11 +20,12 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
-import { Sparkles, Send, Eye, Image as ImageIcon, Calendar } from 'lucide-react'
+import { Sparkles, Send, Eye, Image as ImageIcon, Calendar, ImagePlus } from 'lucide-react'
 import { getPosts, generatePostContent, updatePostStatus } from '@/services/posts'
 import { getAgendas } from '@/services/agendas'
 import { Post, Agenda } from '@/types'
 import { PostDetailModal } from '@/components/PostDetailModal'
+import { GenerateImageDialog } from '@/components/GenerateImageDialog'
 import { useAuth } from '@/hooks/use-auth'
 import { toast } from '@/hooks/use-toast'
 import { useRealtime } from '@/hooks/use-realtime'
@@ -48,6 +49,8 @@ export default function PostsPage() {
   const [selectedPost, setSelectedPost] = useState<Post | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
   const [generatingId, setGeneratingId] = useState<string | null>(null)
+  const [imageGenPostId, setImageGenPostId] = useState<string | null>(null)
+  const [imageGenOpen, setImageGenOpen] = useState(false)
 
   useEffect(() => {
     if (agendaId) setAgendaFilter(agendaId)
@@ -243,6 +246,28 @@ export default function PostsPage() {
                             </Button>
                           )}
                           <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={imageGenOpen}
+                            onClick={() => {
+                              const agendaData = post.expand?.agenda
+                              if (!agendaData?.base_image || !agendaData?.instructions?.trim()) {
+                                toast({
+                                  title: 'Dados incompletos',
+                                  description:
+                                    'A agenda precisa ter uma imagem base e instruções definidas antes de gerar a imagem.',
+                                  variant: 'destructive',
+                                })
+                                return
+                              }
+                              setImageGenPostId(post.id)
+                              setImageGenOpen(true)
+                            }}
+                            className="text-indigo-600 border-indigo-200 hover:bg-indigo-50 text-xs gap-1 py-1 h-8"
+                          >
+                            <ImagePlus className="h-3 w-3" /> Imagem
+                          </Button>
+                          <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => {
@@ -265,6 +290,12 @@ export default function PostsPage() {
       </Card>
 
       <PostDetailModal open={modalOpen} onOpenChange={setModalOpen} post={selectedPost} />
+      <GenerateImageDialog
+        open={imageGenOpen}
+        onOpenChange={setImageGenOpen}
+        postId={imageGenPostId}
+        onSuccess={loadData}
+      />
     </div>
   )
 }
